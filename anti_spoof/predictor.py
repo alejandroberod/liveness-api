@@ -1,32 +1,28 @@
-"""Inference service based on Silent-Face-Anti-Spoofing (src/anti_spoof_predict.py + test.py)."""
+"""Inference service based on Silent-Face-Anti-Spoofing (src/anti_spoof_predict.py + test.py).
+
+The MiniFASNet models run as ONNX (see scripts/export_onnx.py), so torch is not needed at runtime.
+"""
 
 import math
 import threading
-from collections import OrderedDict
 from pathlib import Path
 
 import cv2
 import numpy as np
-import torch
-import torch.nn.functional as F
+import onnxruntime as ort
 
-from anti_spoof.model_lib.MiniFASNet import (
-    MiniFASNetV1, MiniFASNetV2, MiniFASNetV1SE, MiniFASNetV2SE,
-)
-from anti_spoof.utils import CropImage, get_kernel, parse_model_name
+from anti_spoof.utils import CropImage, parse_model_name
 
 RESOURCES_DIR = Path(__file__).resolve().parent.parent / "resources"
 MODELS_DIR = RESOURCES_DIR / "anti_spoof_models"
 DETECTION_DIR = RESOURCES_DIR / "detection_model"
 
-MODEL_MAPPING = {
-    'MiniFASNetV1': MiniFASNetV1,
-    'MiniFASNetV2': MiniFASNetV2,
-    'MiniFASNetV1SE': MiniFASNetV1SE,
-    'MiniFASNetV2SE': MiniFASNetV2SE,
-}
-
 REAL_LABEL = 1
+
+
+def softmax(x):
+    e = np.exp(x - x.max(axis=1, keepdims=True))
+    return e / e.sum(axis=1, keepdims=True)
 
 
 class FaceDetector:
@@ -64,29 +60,23 @@ class FaceDetector:
 
 
 class AntiSpoofService:
-    def __init__(self, device=None):
-        self.device = torch.device(device or ("cuda:0" if torch.cuda.is_available() else "cpu"))
+    def __init__(self):
         self.detector = FaceDetector()
         self.cropper = CropImage()
-        self.models = [self._load_model(p) for p in sorted(MODELS_DIR.glob("*.pth"))]
+        self.models = [self._load_model(p) for p in sorted(MODELS_DIR.glob("*.onnx"))]
         if not self.models:
-            raise RuntimeError(f"No .pth models found in {MODELS_DIR}")
+            raise RuntimeError(f"No .onnx models found in {MODELS_DIR} (run scripts/export_onnx.py)")
         self._lock = threading.Lock()
 
     def _load_model(self, model_path):
-        h_input, w_input, model_type, scale = parse_model_name(model_path.name)
-        model = MODEL_MAPPING[model_type](conv6_kernel=get_kernel(h_input, w_input)).to(self.device)
+        h_input, w_input, _, scale = parse_model_name(model_path.name)
+        session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+        return session, session.get_inputs()[0].name, h_input, w_input, scale
 
-        state_dict = torch.load(model_path, map_location=self.device, weights_only=True)
-        if next(iter(state_dict)).startswith('module.'):
-            state_dict = OrderedDict((k[7:], v) for k, v in state_dict.items())
-        model.load_state_dict(state_dict)
-        model.eval()
-        return model, h_input, w_input, scale
-
-    def _to_tensor(self, img):
+    @staticmethod
+    def _to_input(img):
         # Same as the original repo's custom ToTensor: BGR, HWC -> CHW, NOT divided by 255.
-        return torch.from_numpy(img.transpose((2, 0, 1))).float().unsqueeze(0).to(self.device)
+        return img.transpose((2, 0, 1))[np.newaxis].astype(np.float32)
 
     def predict(self, image_bgr):
         """Returns {"label", "score", "bbox"} or None if no face is detected."""
@@ -96,14 +86,13 @@ class AntiSpoofService:
                 return None
 
             prediction = np.zeros((1, 3))
-            with torch.no_grad():
-                for model, h_input, w_input, scale in self.models:
-                    patch = self.cropper.crop(
-                        org_img=image_bgr, bbox=bbox, scale=scale,
-                        out_w=w_input, out_h=h_input, crop=scale is not None,
-                    )
-                    output = model(self._to_tensor(patch))
-                    prediction += F.softmax(output, dim=1).cpu().numpy()
+            for session, input_name, h_input, w_input, scale in self.models:
+                patch = self.cropper.crop(
+                    org_img=image_bgr, bbox=bbox, scale=scale,
+                    out_w=w_input, out_h=h_input, crop=scale is not None,
+                )
+                logits = session.run(None, {input_name: self._to_input(patch)})[0]
+                prediction += softmax(logits)
 
         label = int(np.argmax(prediction))
         score = float(prediction[0][label] / len(self.models))

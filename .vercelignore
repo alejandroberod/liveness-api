@@ -1,0 +1,7 @@
+# Not needed at runtime: the API only loads the .onnx models
+.venv/
+dataset/
+scripts/
+resources/anti_spoof_models/*.pth
+requirements-dev.txt
+__pycache__/

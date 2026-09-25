@@ -1,0 +1,5 @@
+# Only needed to re-export the models (scripts/export_onnx.py), not to run the API.
+-r requirements.txt
+torch
+onnx
+onnxscript

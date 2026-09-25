@@ -1,4 +1,4 @@
 flask
 numpy<2
-opencv-python
-torch
+opencv-python-headless
+onnxruntime

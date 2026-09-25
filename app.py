@@ -5,7 +5,7 @@ from flask import Flask, jsonify, request
 from anti_spoof.predictor import AntiSpoofService
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB
+app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024  # 4 MB (Vercel rejects request bodies over 4.5 MB)
 
 service = AntiSpoofService()
 
@@ -34,7 +34,7 @@ def predict():
 
 @app.errorhandler(413)
 def too_large(_):
-    return jsonify(error="image_too_large", detail="Max size is 10 MB"), 413
+    return jsonify(error="image_too_large", detail="Max size is 4 MB"), 413
 
 
 if __name__ == "__main__":

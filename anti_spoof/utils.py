@@ -9,10 +9,10 @@ def get_kernel(height, width):
 
 
 def parse_model_name(model_name):
-    """'2.7_80x80_MiniFASNetV2.pth' -> (80, 80, 'MiniFASNetV2', 2.7)"""
+    """'2.7_80x80_MiniFASNetV2.pth' (or .onnx) -> (80, 80, 'MiniFASNetV2', 2.7)"""
     info = model_name.split('_')[0:-1]
     h_input, w_input = info[-1].split('x')
-    model_type = model_name.split('.pth')[0].split('_')[-1]
+    model_type = model_name.rsplit('.', 1)[0].split('_')[-1]
     scale = None if info[0] == "org" else float(info[0])
     return int(h_input), int(w_input), model_type, scale
 
