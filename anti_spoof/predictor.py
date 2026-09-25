@@ -79,7 +79,7 @@ class AntiSpoofService:
         return img.transpose((2, 0, 1))[np.newaxis].astype(np.float32)
 
     def predict(self, image_bgr):
-        """Returns {"label", "score", "bbox"} or None if no face is detected."""
+        """Returns {"label", "score", "real_score", "bbox"} or None if no face is detected."""
         with self._lock:
             bbox = self.detector.get_bbox(image_bgr)
             if bbox is None:
@@ -94,10 +94,11 @@ class AntiSpoofService:
                 logits = session.run(None, {input_name: self._to_input(patch)})[0]
                 prediction += softmax(logits)
 
+        prediction /= len(self.models)
         label = int(np.argmax(prediction))
-        score = float(prediction[0][label] / len(self.models))
         return {
             "label": "real" if label == REAL_LABEL else "fake",
-            "score": round(score, 4),
+            "score": round(float(prediction[0][label]), 4),
+            "real_score": round(float(prediction[0][REAL_LABEL]), 4),
             "bbox": bbox,
         }
