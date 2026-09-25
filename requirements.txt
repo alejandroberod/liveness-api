@@ -1,0 +1,4 @@
+flask
+numpy<2
+opencv-python
+torch

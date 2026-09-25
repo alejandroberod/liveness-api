@@ -1,0 +1,24 @@
+# Imágenes de prueba
+dataset/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Entorno virtual
+.venv/
+venv/
+
+# Variables de entorno / secretos
+.env
+.env.*
+
+# IDE / sistema operativo
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log
